@@ -30,6 +30,10 @@ public class BaseDistributedLock {
     }
 
     private String createLockNode(ZkClient client, String path) throws Exception {
+        // 如果父节点不存在则创建
+        if(!client.exists(basePath)){
+            client.createPersistent(basePath);
+        }
         return client.createEphemeralSequential(path, null);
     }
 
