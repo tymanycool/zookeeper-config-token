@@ -3,6 +3,8 @@ package com.tianyao;
 import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONObject;
 import com.tianyao.entity.TokenConfig;
+import com.tianyao.lock.SimpleDistributedLockMutex;
+import com.tianyao.lock.ZkClientExt;
 import com.tianyao.util.DateUtil;
 import org.I0Itec.zkclient.IZkDataListener;
 import org.I0Itec.zkclient.ZkClient;
@@ -20,7 +22,7 @@ public class ZkGetTokenClient implements Runnable{
     @Autowired
     private ZkTokenManager zkTokenManager;
 
-    private ZkClient zk = new ZkClient("192.168.33.128:2181");
+    private ZkClientExt zk = new ZkClientExt("192.168.33.128:2181");
 
     private TokenConfig config;
 
@@ -35,7 +37,14 @@ public class ZkGetTokenClient implements Runnable{
             System.out.println("加载到配置："+config.toString());
             // token 过期
             if(config.getExpDate().compareTo(DateUtil.getCurrentTime())<0){
-                applyToekn();
+                TokenConfig tokenConfig = zkTokenManager.downLoadConfigFromDB();
+                // 如果数据库的token是不可以用的（过期的），说明这是token过期后最先过来的请求
+                if(tokenConfig.getExpDate().compareTo(DateUtil.getCurrentTime())<0){
+                    applyToekn();
+                }else {
+                    // 数据库的token 已经被前面的请求刷新好了，直接用数据库的token就可以了
+                    config = tokenConfig;
+                }
             }
         }
         //监听配置文件修改
@@ -55,8 +64,16 @@ public class ZkGetTokenClient implements Runnable{
         });
         return config;
     }
-
+    //申请token
     private void applyToekn() {
+        // 添加分布式锁
+        SimpleDistributedLockMutex lock = new SimpleDistributedLockMutex(zk, "/tokenlock");
+        try {
+            lock.acquire();
+            System.out.println("获取token，，，，，添加分布式锁。。。。。");
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
         String str = restTemplate.getForObject("http://localhost:8080/applyToken", String.class);
         JSONObject jsonObject = (JSONObject) JSON.parse(str);
         String token = (String)jsonObject.get("token");
@@ -70,6 +87,14 @@ public class ZkGetTokenClient implements Runnable{
         // 同步配置到zookeeper
         zkTokenManager.syncConfigToZk();
         System.out.println("zookeeper没有token配置，调用网状网初始化.....");
+
+        // 释放分布式锁
+        try {
+            lock.release();
+            System.out.println("获取token，，，，，释放分布式锁。。。。。");
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
     }
 
     @Override
