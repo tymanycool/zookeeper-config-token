@@ -74,6 +74,7 @@ public class ZkGetTokenClient implements Runnable{
         } catch (Exception e) {
             e.printStackTrace();
         }
+
         String str = restTemplate.getForObject("http://localhost:8080/applyToken", String.class);
         JSONObject jsonObject = (JSONObject) JSON.parse(str);
         String token = (String)jsonObject.get("token");
@@ -81,6 +82,14 @@ public class ZkGetTokenClient implements Runnable{
         if(config==null) config = new TokenConfig();
         config.setTokenValue(token);
         config.setExpDate(expdate);
+
+        // 等待10s=====test
+        try {
+            Thread.sleep(1000*10);
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
+
         //ZkTokenManager zkTokenManager = new ZkTokenManager();
         // 更新数据库
         zkTokenManager.upLoadConfigToDB(token,expdate);
